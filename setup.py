@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),
-    url_code="https://github.com/AI-Stratov/lowmq-python-client",
+    url="https://github.com/AI-Stratov/lowmq-python-client",
     include_package_data=True,
     install_requires=[
         "pydantic>=2.6.4",
