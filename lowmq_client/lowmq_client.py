@@ -2,7 +2,7 @@ import aiohttp
 from pydantic import AnyUrl
 
 
-class LowMqBaseClient:
+class LowMqClient:
     def __init__(self, auth_key: str, lowmq_url: AnyUrl):
         self.auth_key = auth_key
         self.lowmq_url = lowmq_url
