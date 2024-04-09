@@ -1,7 +1,11 @@
 # Python client for LowMQ
 
+[![PyPI version](https://img.shields.io/pypi/v/lowmq-client?color=black&style=for-the-badge)](https://pypi.org/project/lowmq-client/)
+
 This is a Python asynchronous client for interacting with LowMQ, a message queuing service. The client allows you to
 send, retrieve, and delete messages from queues hosted on a LowMQ server.
+
+**LowMq Server:**
 
 [![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/farawayCC/lowmq)
 
