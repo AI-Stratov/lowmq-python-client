@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lowmq-client"
+version = "1.0.0"
+description = "Python asynchronous client for interacting with LowMQ"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "AI-Stratov" }]
+license = { text = "MIT" }
+keywords = ["lowmq", "message-queue", "asyncio", "aiohttp", "client", "pydantic"]
+dependencies = [
+  "pydantic>=2.6.4",
+  "aiohttp>=3.9.3",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Framework :: AsyncIO",
+]
+
+[project.urls]
+Homepage = "https://github.com/AI-Stratov/lowmq-python-client"
+Repository = "https://github.com/AI-Stratov/lowmq-python-client"
+Issues = "https://github.com/AI-Stratov/lowmq-python-client/issues"
+"LowMQ Server" = "https://github.com/farawayCC/lowmq"
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.4.0",
+  "mypy>=1.8.0",
+  "pre-commit>=3.0.4",
+  "coverage>=5.3",
+  "uv>=0.2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["lowmq_client*"]
+
+[tool.setuptools.package-data]
+lowmq_client = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E203"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lowmq_client"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+
+[tool.mypy]
+python_version = "3.11"
+pretty = true
+show_error_codes = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_optional = true
+plugins = ["pydantic.mypy"]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.4.0",
+  "mypy>=1.8.0",
+  "pre-commit>=3.0.4",
+  "coverage>=5.3",
+  "uv>=0.2.0",
+]

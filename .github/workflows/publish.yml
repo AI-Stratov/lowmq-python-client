@@ -2,28 +2,38 @@ name: Publish to PyPI
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install setuptools wheel twine
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
 
-    - name: Build and publish
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        python setup.py sdist bdist_wheel
-        twine upload --skip-existing dist/*
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run tests
+        run: uv run python -m unittest -v
+
+      - name: Build package (sdist + wheel)
+        run: uvx --from build pyproject-build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true

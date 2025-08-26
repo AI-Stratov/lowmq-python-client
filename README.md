@@ -1,66 +1,163 @@
-# Python client for LowMQ
+# LowMQ Python Client
 
 [![PyPI version](https://img.shields.io/pypi/v/lowmq-client?color=black&style=for-the-badge)](https://pypi.org/project/lowmq-client/)
+[![Python versions](https://img.shields.io/pypi/pyversions/lowmq-client?style=for-the-badge)](https://pypi.org/project/lowmq-client/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg?style=for-the-badge)](./LICENSE)
 
-This is a Python asynchronous client for interacting with LowMQ, a message queuing service. The client allows you to
-send, retrieve, and delete messages from queues hosted on a LowMQ server.
+An ergonomic, type-annotated, asyncio-based client for LowMQ — a lightweight message queue.
 
-**LowMq Server:**
+- LowMQ server repo: https://github.com/farawayCC/lowmq
+- This package: https://pypi.org/project/lowmq-client/
 
-[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/farawayCC/lowmq)
+## Highlights
 
-## Usage
+- Async-first API built on top of aiohttp
+- Fully type-annotated, ships py.typed for type checkers
+- Safe JSON handling and helpful exceptions
+- Pluggable aiohttp session and configurable timeouts
+- Tiny footprint, minimal required deps
 
-Here's a quick guide on how to use the LowMQ client:
+## Install
 
+Using pip:
+
+```bash
+pip install lowmq-client
 ```
+
+For development (linters, tests, etc.):
+
+```bash
+pip install -e .[dev]
+pre-commit install
+```
+
+Using uv (fast Python package manager):
+
+```bash
+# Install uv with pipx (recommended)
+pipx install uv
+
+# Sync the project (installs core + dev, as configured)
+uv sync
+
+# Activate the virtual environment that uv manages
+# Windows PowerShell:
+. .venv\Scripts\activate
+# Linux/macOS:
+# source .venv/bin/activate
+
+pre-commit install
+```
+
+## Quickstart
+
+```python
+import asyncio
 from lowmq_client import LowMqClient
 
-async def main():
-    # Initialize the LowMQ client
-    lowmq_url = "https://your-lowmq-server.com"
+async def main() -> None:
+    base_url = "https://your-lowmq-server.com"
     auth_key = "your-auth-key"
-    async with LowMqClient(auth_key, lowmq_url) as client:
-        # Add a packet to a queue
-        await client.add_packet("queue_name", {"key": "value"})
 
-        # Get a packet from a queue
-        packet = await client.get_packet("queue_name")
-        print(packet)
+    async with LowMqClient(auth_key, base_url) as client:
+        # Add a message to a queue
+        add_res = await client.add_packet("payments", {"amount": 100}, freeze_time_min=5)
+        print("added:", add_res)
 
-        # Delete a packet from a queue
-        packet_id = packet['_id']
-        await client.delete_packet("queue_name", packet_id)
+        # Get a message from a queue (and keep it in the queue)
+        msg = await client.get_packet("payments", delete=False)
+        print("fetched:", msg)
 
+        # Delete a message by id
+        if msg and "_id" in msg:
+            ok = await client.delete_packet("payments", msg["_id"])
+            print("deleted:", ok)
+
+asyncio.run(main())
 ```
 
-## API Reference
+## API
 
-* **`LowMqClient(auth_key: str, lowmq_url: str)`**
-  Constructor for the LowMQ client.
-  * `auth_key:` Authentication key for accessing the LowMQ server.
-  * `lowmq_url:` URL of the LowMQ server.
+- LowMqClient(auth_key: str, lowmq_url: str | pydantic.AnyUrl, session: Optional[aiohttp.ClientSession] = None, timeout: Optional[aiohttp.ClientTimeout] = None)
+  - Asynchronous client. Can re-use an external aiohttp session.
+- await set_auth_key(auth_key: str) -> None
+- await set_lowmq_url(lowmq_url: str | pydantic.AnyUrl) -> None
+- await add_packet(queue_name: str, payload: Any, freeze_time_min: int = 5) -> dict
+  - POST /msg?freezeTimeMin=...
+- await get_packet(queue_name: str, delete: bool = False) -> dict
+  - GET /msg?key=...&delete=true|false
+- await delete_packet(queue_name: str, packet_id: str) -> bool
+  - DELETE /msg?key=...&_id=...
 
-* **`async set_auth_key(auth_key: str)`**
-  Set a new authentication key.
-  * `auth_key:` New authentication key.
+### Exceptions
 
-* **`async set_lowmq_url(lowmq_url: str)`**
-  Set a new LowMQ server URL.
-  * `lowmq_url:` New LowMQ server URL.
+- LowMqError — base class for client exceptions
+- InvalidUrlError — invalid LowMQ base URL
+- ClientClosedError — client used without an active session
+- ApiError — server returned non-2xx, includes status, reason, and parsed body when possible
 
-* **`async add_packet(queue_name: str, payload: dict, freeze_time_min: int = 5) -> dict`**
-  Add a packet to a queue.
-  * `queue_name:` Name of the queue.
-  * `payload:` Payload of the packet.
-  * `freeze_time_min:` Optional. Freeze time for the message in minutes (default is 5).
+## Typing
 
-* **`async get_packet(queue_name: str, delete: bool = False) -> dict`**
-  Retrieve a packet from a queue.
-  * `queue_name:` Name of the queue.
-  * `delete:` Optional. If True, the retrieved packet will be deleted from the queue (default is False).
+This package is fully typed and includes a py.typed marker. You can rely on type
+checkers (mypy/pyright) to validate your usage. The public API returns standard
+Python types (dict) for server responses; you can define your own Pydantic
+models if you prefer stronger typing for message payloads.
 
-* **`async delete_packet(queue_name: str, packet_id: str) -> bool`**
-  Delete a packet from a queue.
-  * `queue_name:` Name of the queue.
-  * `packet_id:` ID of the packet to delete.
+## Recipes
+
+- Reusing your aiohttp session:
+
+```python
+import aiohttp
+from lowmq_client import LowMqClient
+
+session = aiohttp.ClientSession()
+client = LowMqClient("key", "https://lowmq.example", session=session)
+# ... use client inside an async context as usual ...
+```
+
+- Custom timeout:
+
+```python
+import aiohttp
+from lowmq_client import LowMqClient
+
+client = LowMqClient(
+    "key",
+    "https://lowmq.example",
+    timeout=aiohttp.ClientTimeout(total=10),
+)
+```
+
+## Development
+
+- Lint and format (Ruff):
+
+```bash
+ruff check .
+ruff format .
+```
+
+- Tests:
+
+```bash
+python -m unittest -v
+```
+
+- Pre-commit hooks:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+## Links
+
+- LowMQ server: https://github.com/farawayCC/lowmq
+- PyPI: https://pypi.org/project/lowmq-client/
+- Issues: https://github.com/AI-Stratov/lowmq-python-client/issues
+
+## License
+
+MIT
