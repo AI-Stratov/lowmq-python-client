@@ -1,201 +1,252 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any, Dict, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from dataclasses import dataclass
+from typing import Any
 
 import aiohttp
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 
 from lowmq_client import LowMqClient
 from lowmq_client.exceptions import ApiError, ClientClosedError, InvalidUrlError
 
 
-class StubResponse:
-    def __init__(
-        self,
-        status: int = 200,
-        reason: str = "OK",
-        json_data: Optional[Dict[str, Any]] = None,
-        text_data: str = "",
-        json_error: bool = False,
-    ) -> None:
-        self.status = status
-        self.reason = reason
-        self._json_data = json_data or {}
-        self._text_data = text_data
-        self._json_error = json_error
-
-    async def __aenter__(self) -> "StubResponse":
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        return None
-
-    async def json(self, content_type: Optional[str] = None) -> Dict[str, Any]:
-        if self._json_error:
-            raise ValueError("not JSON")
-        return self._json_data
-
-    async def text(self) -> str:
-        return self._text_data
+@dataclass
+class Reply:
+    status: int = 200
+    body: str = "{}"
+    content_type: str = "application/json"
 
 
-def make_session(response: StubResponse) -> MagicMock:
-    session = MagicMock()
-    session.closed = False
-    session.request = MagicMock(return_value=response)
-    return session
+@dataclass
+class Received:
+    method: str
+    path: str
+    query: dict[str, str]
+    headers: dict[str, str]
+    body: str
+
+
+class FakeLowMq:
+    """In-process HTTP server that records requests and returns a preset reply."""
+
+    def __init__(self) -> None:
+        self.reply = Reply()
+        self.requests: list[Received] = []
+        app = web.Application()
+        app.router.add_route("*", "/{tail:.*}", self._handle)
+        self.server = TestServer(app)
+
+    async def _handle(self, request: web.Request) -> web.Response:
+        self.requests.append(
+            Received(
+                method=request.method,
+                path=request.path,
+                query=dict(request.query),
+                headers=dict(request.headers),
+                body=await request.text(),
+            )
+        )
+        return web.Response(
+            status=self.reply.status,
+            text=self.reply.body,
+            content_type=self.reply.content_type,
+        )
+
+    @property
+    def url(self) -> str:
+        return str(self.server.make_url("/"))
+
+    @property
+    def last(self) -> Received:
+        return self.requests[-1]
 
 
 class LowMqClientTests(unittest.IsolatedAsyncioTestCase):
-    async def test_add_packet_success(self) -> None:
-        session = make_session(StubResponse(status=200, json_data={"ok": True}))
+    async def asyncSetUp(self) -> None:
+        self.lowmq = FakeLowMq()
+        await self.lowmq.server.start_server()
+        self.addAsyncCleanup(self.lowmq.server.close)
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            res = await client.add_packet("q", {"a": 1})
-        self.assertEqual(res, {"ok": True})
+    def client(self, **kwargs: Any) -> LowMqClient:
+        return LowMqClient("secret", self.lowmq.url, **kwargs)
 
-        session.request.assert_called()
-        args, kwargs = session.request.call_args
-        self.assertEqual(args[0], "POST")
-        self.assertIn("/msg?freezeTimeMin=5", args[1])
-        self.assertEqual(kwargs["json"], {"key": "q", "value": {"a": 1}})
-        self.assertEqual(kwargs["headers"]["Authorization"], "token k")
+    async def test_add_packet(self) -> None:
+        self.lowmq.reply = Reply(body='{"_id": "1"}')
 
-    async def test_add_packet_custom_freeze_time(self) -> None:
-        session = make_session(StubResponse())
+        async with self.client() as client:
+            result = await client.add_packet("payments", {"amount": 100})
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
+        self.assertEqual(result, {"_id": "1"})
+        request = self.lowmq.last
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(request.path, "/msg")
+        self.assertEqual(request.query, {"freezeTimeMin": "5"})
+        self.assertEqual(request.headers["Authorization"], "token secret")
+        self.assertEqual(request.headers["Content-Type"], "application/json")
+        self.assertEqual(request.body, '{"key": "payments", "value": {"amount": 100}}')
+
+    async def test_add_packet_freeze_time(self) -> None:
+        async with self.client() as client:
             await client.add_packet("q", {}, freeze_time_min=10)
 
-        args, _ = session.request.call_args
-        self.assertIn("freezeTimeMin=10", args[1])
+        self.assertEqual(self.lowmq.last.query, {"freezeTimeMin": "10"})
 
-    async def test_get_packet_delete_true(self) -> None:
-        session = make_session(StubResponse(status=200, json_data={"_id": "1", "value": 42}))
+    async def test_get_packet(self) -> None:
+        self.lowmq.reply = Reply(body='{"_id": "1", "key": "q", "value": 42}')
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            res = await client.get_packet("q", delete=True)
-        self.assertEqual(res["_id"], "1")
+        async with self.client() as client:
+            result = await client.get_packet("q")
 
-        args, _ = session.request.call_args
-        self.assertEqual(args[0], "GET")
-        self.assertIn("key=q", args[1])
-        self.assertIn("delete=true", args[1])
+        self.assertEqual(result, {"_id": "1", "key": "q", "value": 42})
+        self.assertEqual(self.lowmq.last.method, "GET")
+        self.assertEqual(self.lowmq.last.path, "/msg")
+        self.assertEqual(self.lowmq.last.query, {"key": "q", "delete": "false"})
 
-    async def test_get_packet_keeps_message_by_default(self) -> None:
-        session = make_session(StubResponse())
+    async def test_get_packet_delete(self) -> None:
+        async with self.client() as client:
+            await client.get_packet("q", delete=True)
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            await client.get_packet("q")
+        self.assertEqual(self.lowmq.last.query, {"key": "q", "delete": "true"})
 
-        args, _ = session.request.call_args
-        self.assertIn("delete=false", args[1])
+    async def test_query_values_are_encoded(self) -> None:
+        async with self.client() as client:
+            await client.get_packet("a&b c?d#e")
+            await client.delete_packet("a&b", "id/1?x")
+
+        self.assertEqual(self.lowmq.requests[0].query, {"key": "a&b c?d#e", "delete": "false"})
+        self.assertEqual(self.lowmq.requests[1].query, {"key": "a&b", "_id": "id/1?x"})
+
+    async def test_base_url_with_path(self) -> None:
+        for base in ("api", "api/"):
+            async with LowMqClient("secret", self.lowmq.url + base) as client:
+                await client.get_packet("q")
+            self.assertEqual(self.lowmq.last.path, "/api/msg")
 
     async def test_non_json_body_returned_as_raw(self) -> None:
-        session = make_session(StubResponse(text_data="plain text", json_error=True))
+        self.lowmq.reply = Reply(body="plain text", content_type="text/plain")
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            res = await client.get_packet("q")
-        self.assertEqual(res, {"raw": "plain text"})
+        async with self.client() as client:
+            result = await client.get_packet("q")
 
-    async def test_delete_packet_status_handling(self) -> None:
-        session = make_session(StubResponse(status=204))
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            ok = await client.delete_packet("q", "id1")
-        self.assertTrue(ok)
+        self.assertEqual(result, {"raw": "plain text"})
 
-        args, _ = session.request.call_args
-        self.assertEqual(args[0], "DELETE")
-        self.assertIn("key=q", args[1])
-        self.assertIn("_id=id1", args[1])
+    async def test_empty_body_returned_as_raw(self) -> None:
+        self.lowmq.reply = Reply(body="", content_type="text/plain")
 
-        session = make_session(StubResponse(status=500, reason="err"))
-        async with LowMqClient("k", "https://example.com", session=session) as client:
-            ok2 = await client.delete_packet("q", "id2")
-        self.assertFalse(ok2)
+        async with self.client() as client:
+            result = await client.add_packet("q", {})
 
-    async def test_api_error_on_non_2xx(self) -> None:
-        session = make_session(StubResponse(status=400, reason="Bad", json_data={"detail": "bad"}))
+        self.assertEqual(result, {"raw": ""})
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
+    async def test_delete_packet(self) -> None:
+        self.lowmq.reply = Reply(status=204, body="")
+
+        async with self.client() as client:
+            deleted = await client.delete_packet("q", "id1")
+
+        self.assertTrue(deleted)
+        self.assertEqual(self.lowmq.last.method, "DELETE")
+        self.assertEqual(self.lowmq.last.path, "/msg")
+        self.assertEqual(self.lowmq.last.query, {"key": "q", "_id": "id1"})
+
+    async def test_delete_packet_failure_returns_false(self) -> None:
+        self.lowmq.reply = Reply(status=500)
+
+        async with self.client() as client:
+            self.assertFalse(await client.delete_packet("q", "id1"))
+
+    async def test_api_error_with_json_body(self) -> None:
+        self.lowmq.reply = Reply(status=400, body='{"detail": "bad"}')
+
+        async with self.client() as client:
             with self.assertRaises(ApiError) as ctx:
                 await client.add_packet("q", {})
+
         self.assertEqual(ctx.exception.status, 400)
-        self.assertEqual(ctx.exception.reason, "Bad")
+        self.assertEqual(ctx.exception.reason, "Bad Request")
         self.assertEqual(ctx.exception.body, {"detail": "bad"})
 
     async def test_api_error_with_text_body(self) -> None:
-        session = make_session(
-            StubResponse(status=404, reason="Not Found", text_data="no messages", json_error=True)
-        )
+        self.lowmq.reply = Reply(status=404, body="no messages", content_type="text/plain")
 
-        async with LowMqClient("k", "https://example.com", session=session) as client:
+        async with self.client() as client:
             with self.assertRaises(ApiError) as ctx:
                 await client.get_packet("q")
+
         self.assertEqual(ctx.exception.status, 404)
         self.assertEqual(ctx.exception.body, "no messages")
 
-    async def test_invalid_url(self) -> None:
-        with self.assertRaises(InvalidUrlError):
-            _ = LowMqClient("k", "not-a-url")
+    async def test_api_error_with_empty_body(self) -> None:
+        self.lowmq.reply = Reply(status=503, body="", content_type="text/plain")
+
+        async with self.client() as client:
+            with self.assertRaises(ApiError) as ctx:
+                await client.get_packet("q")
+
+        self.assertIsNone(ctx.exception.body)
 
     async def test_setters(self) -> None:
-        session = make_session(StubResponse())
-        client = LowMqClient("k", "https://example.com", session=session)
-
-        await client.set_auth_key("k2")
-        await client.set_lowmq_url("https://other.example")
-        await client.get_packet("q")
-
-        args, kwargs = session.request.call_args
-        self.assertTrue(args[1].startswith("https://other.example"))
-        self.assertEqual(kwargs["headers"]["Authorization"], "token k2")
-
-        with self.assertRaises(InvalidUrlError):
-            await client.set_lowmq_url("not-a-url")
-
-    async def test_client_closed_error(self) -> None:
-        client = LowMqClient("k", "https://example.com")
-        with self.assertRaises(ClientClosedError):
-            await client.add_packet("q", {})
-
-    async def test_closed_external_session(self) -> None:
-        session = make_session(StubResponse())
-        session.closed = True
-        client = LowMqClient("k", "https://example.com", session=session)
-        with self.assertRaises(ClientClosedError):
+        async with LowMqClient("old", "https://unused.example") as client:
+            await client.set_auth_key("new")
+            await client.set_lowmq_url(self.lowmq.url)
             await client.get_packet("q")
 
-    async def test_external_session_is_not_closed(self) -> None:
-        session = make_session(StubResponse())
-        session.close = AsyncMock()
+            with self.assertRaises(InvalidUrlError):
+                await client.set_lowmq_url("not-a-url")
 
-        async with LowMqClient("k", "https://example.com", session=session):
-            pass
+        self.assertEqual(self.lowmq.last.headers["Authorization"], "token new")
 
-        session.close.assert_not_called()
-
-    async def test_own_session_uses_timeout_and_is_closed(self) -> None:
+    async def test_own_session_is_closed_on_exit(self) -> None:
         timeout = aiohttp.ClientTimeout(total=10)
-        with patch("lowmq_client.client.aiohttp.ClientSession") as session_cls:
-            session_cls.return_value.close = AsyncMock()
-            client = LowMqClient("k", "https://example.com", timeout=timeout)
-            async with client:
-                pass
+        client = self.client(timeout=timeout)
 
-        session_cls.assert_called_once_with(timeout=timeout)
-        session_cls.return_value.close.assert_awaited_once()
+        async with client:
+            session = client.session
+            assert session is not None
+            self.assertIs(session.timeout, timeout)
+
+        self.assertTrue(session.closed)
         self.assertIsNone(client.session)
 
     async def test_default_timeout(self) -> None:
-        with patch("lowmq_client.client.aiohttp.ClientSession") as session_cls:
-            session_cls.return_value.close = AsyncMock()
-            async with LowMqClient("k", "https://example.com"):
-                pass
+        async with self.client() as client:
+            assert client.session is not None
+            self.assertEqual(client.session.timeout.total, 30)
 
-        _, kwargs = session_cls.call_args
-        self.assertEqual(kwargs["timeout"].total, 30)
+    async def test_external_session_is_not_closed(self) -> None:
+        async with aiohttp.ClientSession() as session:
+            async with self.client(session=session) as client:
+                await client.get_packet("q")
+            self.assertFalse(session.closed)
+            self.assertIs(client.session, session)
+
+    async def test_request_without_session(self) -> None:
+        with self.assertRaises(ClientClosedError):
+            await self.client().add_packet("q", {})
+
+    async def test_request_with_closed_session(self) -> None:
+        session = aiohttp.ClientSession()
+        await session.close()
+
+        with self.assertRaises(ClientClosedError):
+            await self.client(session=session).get_packet("q")
+
+
+class UrlValidationTests(unittest.TestCase):
+    def test_valid_urls(self) -> None:
+        self.assertEqual(
+            LowMqClient("k", "https://lowmq.example").lowmq_url, "https://lowmq.example/"
+        )
+        self.assertEqual(
+            LowMqClient("k", "http://localhost:8788/api").lowmq_url, "http://localhost:8788/api"
+        )
+
+    def test_invalid_urls(self) -> None:
+        for url in ("not-a-url", "ftp://lowmq.example", ""):
+            with self.subTest(url=url), self.assertRaises(InvalidUrlError):
+                LowMqClient("k", url)
 
 
 if __name__ == "__main__":
