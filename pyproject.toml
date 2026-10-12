@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Typing :: Typed",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
@@ -33,15 +34,6 @@ Homepage = "https://github.com/AI-Stratov/lowmq-python-client"
 Repository = "https://github.com/AI-Stratov/lowmq-python-client"
 Issues = "https://github.com/AI-Stratov/lowmq-python-client/issues"
 "LowMQ Server" = "https://github.com/farawayCC/lowmq"
-
-[project.optional-dependencies]
-dev = [
-  "ruff>=0.4.0",
-  "mypy>=1.8.0",
-  "pre-commit>=3.0.4",
-  "coverage>=5.3",
-  "uv>=0.2.0",
-]
 
 [tool.setuptools.packages.find]
 include = ["lowmq_client*"]
@@ -63,11 +55,9 @@ ignore = ["E203"]
 [tool.ruff.lint.isort]
 known-first-party = ["lowmq_client"]
 
-[tool.ruff.lint.flake8-quotes]
-inline-quotes = "double"
-
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.9"
+files = ["lowmq_client", "tests"]
 pretty = true
 show_error_codes = true
 warn_unused_ignores = true
@@ -80,6 +70,4 @@ dev = [
   "ruff>=0.4.0",
   "mypy>=1.8.0",
   "pre-commit>=3.0.4",
-  "coverage>=5.3",
-  "uv>=0.2.0",
 ]
