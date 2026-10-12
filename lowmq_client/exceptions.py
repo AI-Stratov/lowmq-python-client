@@ -1,7 +1,7 @@
 # Exceptions for LowMQ client
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 class LowMqError(Exception):
@@ -11,7 +11,7 @@ class LowMqError(Exception):
 class InvalidUrlError(LowMqError):
     """Raised when provided LowMQ URL is invalid."""
 
-    def __init__(self, url: Any, message: str | None = None):
+    def __init__(self, url: Any, message: str | None = None) -> None:
         self.url = url
         super().__init__(message or f"Invalid LowMQ URL: {url!r}")
 
@@ -23,7 +23,7 @@ class ClientClosedError(LowMqError):
 class ApiError(LowMqError):
     """Raised when server returns a non-success response."""
 
-    def __init__(self, status: int, reason: str, body: Optional[Any] = None):
+    def __init__(self, status: int, reason: str, body: Any = None) -> None:
         self.status = status
         self.reason = reason
         self.body = body
