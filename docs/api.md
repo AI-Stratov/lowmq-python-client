@@ -15,8 +15,9 @@ LowMqClient(
 ```
 
 - `auth_key` is sent as `Authorization: token <auth_key>` on every request.
-- `lowmq_url` is validated with `pydantic.AnyUrl` and stored in normalized form. An invalid URL
-  raises `InvalidUrlError`.
+- `lowmq_url` must be an `http` or `https` URL. It is validated with pydantic and stored in
+  normalized form, for example `https://lowmq.example` becomes `https://lowmq.example/`. Requests go
+  to `<lowmq_url>/msg` without a doubled slash. An invalid URL raises `InvalidUrlError`.
 - `session` and `timeout` are keyword-only.
 - `timeout` applies only to the session the client creates itself. Default:
   `aiohttp.ClientTimeout(total=30)`.
@@ -54,9 +55,9 @@ Calling a method with no session, or with a closed one, raises `ClientClosedErro
 | `await set_lowmq_url(lowmq_url)` | none, validates the URL | `None` |
 
 `add_packet` and `get_packet` raise `ApiError` on a non-2xx response. A 2xx body that is not
-valid JSON is returned as `{"raw": "<text>"}`.
+valid JSON, including an empty body, is returned as `{"raw": "<text>"}`.
 
-Query parameters are not URL encoded.
+Query parameters are URL encoded, so queue names and ids may contain any characters.
 
 ## Exceptions
 
@@ -67,4 +68,5 @@ Query parameters are not URL encoded.
 | `ClientClosedError` | a request is made without an open session | |
 | `ApiError` | `add_packet` or `get_packet` gets a non-2xx response | `status`, `reason`, `body` |
 
-`ApiError.body` is the parsed JSON body, or the response text if the body is not JSON.
+`ApiError.body` is the parsed JSON body, the response text if the body is not JSON, or `None` if
+the body is empty.

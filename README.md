@@ -32,7 +32,8 @@ asyncio.run(main())
 
 ## Features
 
-- `add_packet`, `get_packet` and `delete_packet` for the LowMQ `/msg` endpoint.
+- `add_packet`, `get_packet` and `delete_packet` for the LowMQ `/msg` endpoint. Queue names and
+  message ids are URL encoded.
 - `async with` opens and closes an `aiohttp.ClientSession`, with a 30 second total timeout by
   default. Pass `timeout=` to change it.
 - Pass your own `session=` to reuse an existing `aiohttp.ClientSession`. The client does not close
@@ -40,19 +41,19 @@ asyncio.run(main())
 - A non-2xx response from `add_packet` or `get_packet` raises `ApiError` with `status`, `reason`
   and `body`.
 - A response body that is not JSON is returned as `{"raw": "<text>"}`.
-- The server URL is validated when the client is created; an invalid URL raises `InvalidUrlError`.
-- Type hints and a `py.typed` marker; the package is checked with mypy in CI.
+- The server URL is validated when the client is created. Only `http` and `https` URLs are
+  accepted; anything else raises `InvalidUrlError`.
+- Type hints and a `py.typed` marker. CI runs mypy in strict mode.
 
 The full API is in [docs/api.md](docs/api.md).
 
 ## Limitations and compatibility
 
-- Python 3.9 to 3.13. CI runs the tests on each of these versions.
+- Python 3.10 to 3.14. CI runs the tests on each of these versions, and once more on Python 3.10
+  with the oldest allowed `aiohttp` (3.10.11) and `pydantic` (2.10).
 - LowMQ server: no server version is pinned. The client uses the `/msg` HTTP endpoint and sends
-  `Authorization: token <key>`. CI does not run against a live server; the tests mock
-  `aiohttp`.
-- Queue names and message ids are put into the query string without URL encoding. Avoid `&`,
-  `?`, `#` and spaces in them.
+  `Authorization: token <key>`. The tests run against an in-process fake server, not a real
+  LowMQ.
 - `delete_packet` returns `False` on a non-2xx response instead of raising.
 - No retries or batching.
 
@@ -60,13 +61,15 @@ The full API is in [docs/api.md](docs/api.md).
 
 ```bash
 uv sync
-uv run python -m unittest -v
+uv run coverage run -m unittest -v
+uv run coverage report
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 ```
 
-`pre-commit install` sets up the same checks as git hooks.
+The tests need no running services. Coverage must stay at 100 percent. `uv run pre-commit install`
+runs ruff and mypy as git hooks, using the versions from `uv.lock`.
 
 Releases: bump `version` in `pyproject.toml`, then push a tag `v<version>`. CI publishes the
 package to PyPI after lint and tests pass.
