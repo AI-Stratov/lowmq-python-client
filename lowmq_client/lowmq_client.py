@@ -1,3 +1,5 @@
 # Legacy module kept for backward compatibility.
-# Prefer importing LowMqClient from lowmq_client.client.
-from .client import LowMqClient  # noqa: F401  # re-export
+# Prefer importing LowMqClient from lowmq_client.
+from .client import LowMqClient
+
+__all__ = ["LowMqClient"]

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,23 +7,23 @@ name = "lowmq-client"
 version = "1.0.0"
 description = "Python asynchronous client for interacting with LowMQ"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "AI-Stratov" }]
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["lowmq", "message-queue", "asyncio", "aiohttp", "client", "pydantic"]
 dependencies = [
-  "pydantic>=2.6.4",
-  "aiohttp>=3.9.3",
+  "aiohttp>=3.10.11",
+  "pydantic>=2.10",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Framework :: AsyncIO",
 ]
@@ -34,15 +34,6 @@ Repository = "https://github.com/AI-Stratov/lowmq-python-client"
 Issues = "https://github.com/AI-Stratov/lowmq-python-client/issues"
 "LowMQ Server" = "https://github.com/farawayCC/lowmq"
 
-[project.optional-dependencies]
-dev = [
-  "ruff>=0.4.0",
-  "mypy>=1.8.0",
-  "pre-commit>=3.0.4",
-  "coverage>=5.3",
-  "uv>=0.2.0",
-]
-
 [tool.setuptools.packages.find]
 include = ["lowmq_client*"]
 
@@ -51,35 +42,36 @@ lowmq_client = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.format]
 quote-style = "double"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
-ignore = ["E203"]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["lowmq_client"]
 
-[tool.ruff.lint.flake8-quotes]
-inline-quotes = "double"
-
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
+files = ["lowmq_client", "tests"]
+strict = true
 pretty = true
-show_error_codes = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-strict_optional = true
 plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+source = ["lowmq_client"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100
 
 [dependency-groups]
 dev = [
-  "ruff>=0.4.0",
-  "mypy>=1.8.0",
-  "pre-commit>=3.0.4",
-  "coverage>=5.3",
-  "uv>=0.2.0",
+  "coverage[toml]>=7.16",
+  "mypy>=2.4",
+  "pre-commit>=4.6",
+  "ruff>=0.17",
 ]

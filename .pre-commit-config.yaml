@@ -1,21 +1,20 @@
+# Hooks run the tool versions pinned in uv.lock.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.10
+  - repo: local
     hooks:
-      - id: ruff
-        args: [ "--fix" ]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1
-    hooks:
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
       - id: mypy
-        args: [ "--config-file=pyproject.toml" ]
-        additional_dependencies:
-          - aiohttp>=3.9.3
-          - pydantic>=2.6.4
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: check-added-large-files
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
