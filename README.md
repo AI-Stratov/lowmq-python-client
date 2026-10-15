@@ -71,8 +71,8 @@ uv run mypy
 The tests need no running services. Coverage must stay at 100 percent. `uv run pre-commit install`
 runs ruff and mypy as git hooks, using the versions from `uv.lock`.
 
-Releases: bump `version` in `pyproject.toml`, then push a tag `v<version>`. CI publishes the
-package to PyPI after lint and tests pass.
+Releases: bump `version` in `pyproject.toml`, then push a tag `v<version>`. After lint and tests
+pass, CI publishes the package to PyPI and creates a GitHub release with generated notes.
 
 ## License
 
